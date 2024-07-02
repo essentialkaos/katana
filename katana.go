@@ -3,7 +3,7 @@ package katana
 // ////////////////////////////////////////////////////////////////////////////////// //
 //                                                                                    //
 //                         Copyright (c) 2024 ESSENTIAL KAOS                          //
-//                       PRIVATE SOFTWARE, ALL RIGHTS RESERVED                        //
+//      Apache License, Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>     //
 //                                                                                    //
 // ////////////////////////////////////////////////////////////////////////////////// //
 
@@ -25,6 +25,11 @@ import (
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
+type Secret struct {
+	pwd *secstr.String
+	err error
+}
+
 type File struct {
 	fd   *os.File
 	salt []byte
@@ -37,6 +42,7 @@ type File struct {
 
 var (
 	ErrNilFile            = fmt.Errorf("File is nil")
+	ErrNilSecret          = fmt.Errorf("Secret is nil")
 	ErrEmptySecret        = fmt.Errorf("Secret is empty")
 	ErrEmptySecretData    = fmt.Errorf("Secret data is empty")
 	ErrEmptySecretPath    = fmt.Errorf("Secret path is empty")
@@ -47,103 +53,164 @@ var (
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-var secret *secstr.String
+// NewSecret creates new katana secret
+func NewSecret(data string) *Secret {
+	s := &Secret{}
+	return s.Add(data)
+}
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Add adds static part of the key
-func Add(data string) error {
-	if data == "" {
-		return ErrEmptySecretData
+func (s *Secret) Add(data string) *Secret {
+	switch {
+	case s == nil:
+		return &Secret{err: ErrNilSecret}
+	case s.err != nil:
+		return s
+	case data == "":
+		s.err = ErrEmptySecretData
+		return s
 	}
 
-	return addKeyData([]byte(data))
+	s.err = s.addKeyData([]byte(data))
+
+	return s
 }
 
 // AddHex adds hex-encoded static part of the key
-func AddHex(data string) error {
-	if data == "" {
-		return ErrEmptySecretData
+func (s *Secret) AddHex(data string) *Secret {
+	switch {
+	case s == nil:
+		return &Secret{err: ErrNilSecret}
+	case s.err != nil:
+		return s
+	case data == "":
+		s.err = ErrEmptySecretData
+		return s
 	}
 
 	bytes, err := hex.DecodeString(data)
 
 	if err != nil {
-		return fmt.Errorf("Can't decode hex-encoded secret data: %v", err)
+		s.err = err
+		return s
 	}
 
-	return addKeyData(bytes)
+	s.err = s.addKeyData(bytes)
+
+	return s
 }
 
 // AddBase64 adds Base64-encoded static part of the key
-func AddBase64(data string) error {
-	if data == "" {
-		return ErrEmptySecretData
+func (s *Secret) AddBase64(data string) *Secret {
+	switch {
+	case s == nil:
+		return &Secret{err: ErrNilSecret}
+	case s.err != nil:
+		return s
+	case data == "":
+		s.err = ErrEmptySecretData
+		return s
 	}
 
 	bytes, err := base64.StdEncoding.DecodeString(data)
 
 	if err != nil {
-		return fmt.Errorf("Can't decode base64-encoded secret data: %v", err)
+		s.err = err
+		return s
 	}
 
-	return addKeyData(bytes)
+	s.err = s.addKeyData(bytes)
+
+	return s
 }
 
 // AddEnv adds dynamic part of the key for environment variable
-func AddEnv(name string) error {
+func (s *Secret) AddEnv(name string) *Secret {
 	switch {
+	case s == nil:
+		return &Secret{err: ErrNilSecret}
+	case s.err != nil:
+		return s
 	case name == "":
-		return ErrEmptyEnvVarName
+		s.err = ErrEmptyEnvVarName
+		return s
 	case os.Getenv(name) == "":
-		return ErrEmptyEnvVar
+		s.err = ErrEmptyEnvVar
+		return s
 	}
 
-	Add(os.Getenv(name))
+	s.err = s.addKeyData([]byte(os.Getenv(name)))
 
 	err := os.Setenv(name, "")
 
 	if err != nil {
-		return fmt.Errorf("Can't clean secret from environment variable: %v", err)
+		s.err = fmt.Errorf("Can't clean secret from environment variable: %v", err)
+		return s
 	}
 
-	return nil
+	return s
 }
 
 // AddFile adds dynamic part of the key based on SHA-512 hash of the file
-func AddFile(file string) error {
-	if file == "" {
-		return ErrEmptySecretPath
+func (s *Secret) AddFile(file string) *Secret {
+	switch {
+	case s == nil:
+		return &Secret{err: ErrNilSecret}
+	case s.err != nil:
+		return s
+	case file == "":
+		s.err = ErrEmptySecretPath
+		return s
 	}
 
 	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
 
 	if err != nil {
-		return fmt.Errorf("Can't open file %q: %v", file, err)
+		s.err = fmt.Errorf("Can't open file %q: %v", file, err)
+		return s
 	}
-
-	defer fd.Close()
 
 	hasher := sha512.New()
 	_, err = io.Copy(hasher, fd)
 
 	if err != nil {
-		return fmt.Errorf("Can't calculate file %q hash: %v", file, err)
+		s.err = fmt.Errorf("Can't calculate file %q hash: %v", file, err)
+		return s
 	}
 
-	return addKeyData(hasher.Sum(nil))
+	s.err = s.addKeyData(hasher.Sum(nil))
+
+	return s
+}
+
+// Validate validates secret
+func (s *Secret) Validate() error {
+	switch {
+	case s == nil:
+		return ErrNilSecret
+	case s.err != nil:
+		return s.err
+	case s.pwd.IsEmpty():
+		return ErrEmptySecretData
+	}
+
+	return nil
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Open opens the named file for reading. If successful, methods on the returned file
 // can be used for reading; the associated file descriptor has mode O_RDONLY.
-func Open(name string) (*File, error) {
-	if secret.IsEmpty() {
-		return nil, ErrEmptySecret
+func (s *Secret) Open(name string) (*File, error) {
+	err := s.Validate()
+
+	if err != nil {
+		return nil, err
 	}
 
-	key, salt, err := deriveKey(name)
+	key, salt, err := s.deriveKey(name)
 
 	if err != nil {
 		return nil, err
@@ -161,15 +228,18 @@ func Open(name string) (*File, error) {
 // OpenFile opens the named file with specified flag (O_RDONLY etc.). If the file does
 // not exist, and the O_CREATE flag is passed, it is created with mode perm (before
 // umask).
-func OpenFile(name string, flag int, perm os.FileMode) (*File, error) {
-	switch {
-	case secret.IsEmpty():
-		return nil, ErrEmptySecret
-	case flag&os.O_APPEND != 0:
+func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error) {
+	err := s.Validate()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if flag&os.O_APPEND != 0 {
 		return nil, ErrAppendNotSupported
 	}
 
-	key, salt, err := deriveKey(name)
+	key, salt, err := s.deriveKey(name)
 
 	if err != nil {
 		return nil, err
@@ -182,6 +252,86 @@ func OpenFile(name string, flag int, perm os.FileMode) (*File, error) {
 	}
 
 	return &File{fd: fd, cfg: sio.Config{Key: key}, salt: salt}, nil
+}
+
+// ////////////////////////////////////////////////////////////////////////////////// //
+
+// addKeyData appends key data
+func (s *Secret) addKeyData(data []byte) error {
+	var err error
+
+	if s.pwd == nil {
+		s.pwd, err = secstr.NewSecureString(data)
+
+		if err != nil {
+			return fmt.Errorf("Can't create secure string: %v", err)
+		}
+	} else {
+		defer s.pwd.Destroy()
+
+		s.pwd, err = secstr.NewSecureString(append(s.pwd.Data, data...))
+
+		if err != nil {
+			return fmt.Errorf("Can't create secure string: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// deriveKey creates derived key from secret
+func (s *Secret) deriveKey(file string) ([]byte, []byte, error) {
+	salt, hasSalt := make([]byte, 32), false
+	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			_, err = io.ReadFull(rand.Reader, salt)
+
+			if err != nil {
+				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
+			}
+		} else {
+			return nil, nil, err
+		}
+	} else {
+		defer fd.Close()
+
+		info, err := fd.Stat()
+
+		if err != nil {
+			return nil, nil, fmt.Errorf("Can't read file info: %v", err)
+		}
+
+		if info.Size() == 0 {
+			_, err = io.ReadFull(rand.Reader, salt)
+
+			if err != nil {
+				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
+			}
+		} else {
+			_, err := io.ReadFull(fd, salt)
+
+			if err != nil {
+				return nil, nil, fmt.Errorf("Can't read salt from file: %v", err)
+			}
+
+			hasSalt = true
+		}
+	}
+
+	secretData := append([]byte{}, s.pwd.Data...)
+	key, err := scrypt.Key(secretData, salt, 32768, 16, 1, 32)
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("Can't derive key from secret: %v", err)
+	}
+
+	if hasSalt {
+		return key, nil, nil
+	}
+
+	return key, salt, nil
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -308,77 +458,6 @@ func (f *File) Read(b []byte) (int, error) {
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
-
-// deriveKey creates derived key from secret
-func deriveKey(file string) ([]byte, []byte, error) {
-	salt, hasSalt := make([]byte, 32), false
-	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
-
-	if err != nil {
-		if os.IsNotExist(err) {
-			_, err = io.ReadFull(rand.Reader, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
-			}
-		} else {
-			return nil, nil, err
-		}
-	} else {
-		defer fd.Close()
-
-		info, err := fd.Stat()
-
-		if err != nil {
-			return nil, nil, fmt.Errorf("Can't read file info: %v", err)
-		}
-
-		if info.Size() == 0 {
-			_, err = io.ReadFull(rand.Reader, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
-			}
-		} else {
-			_, err := io.ReadFull(fd, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't read salt from file: %v", err)
-			}
-
-			hasSalt = true
-		}
-	}
-
-	key, err := scrypt.Key(secret.Data, salt, 32768, 16, 1, 32)
-
-	if err != nil {
-		return nil, nil, fmt.Errorf("Can't derive key from secret: %v", err)
-	}
-
-	if hasSalt {
-		return key, nil, nil
-	}
-
-	return key, salt, nil
-}
-
-// addKeyData adds key data
-func addKeyData(data []byte) error {
-	var err error
-
-	if secret == nil {
-		secret, err = secstr.NewSecureString(data)
-
-		if err != nil {
-			return fmt.Errorf("Can't create secure string: %v", err)
-		}
-	} else {
-		secret.Data = append(secret.Data, data...)
-	}
-
-	return nil
-}
 
 // clearByteSlice clears byte slice
 func clearByteSlice(s []byte) {
