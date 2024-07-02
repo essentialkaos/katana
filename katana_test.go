@@ -105,6 +105,16 @@ func (s *KatanaSuite) TestFileErrors(c *C) {
 	c.Assert(err, Equals, ErrNilFile)
 }
 
+func (s *KatanaSuite) TestHelpersErrors(c *C) {
+	var skn *Secret
+
+	_, err := skn.ReadFile("/test")
+	c.Assert(err, NotNil)
+
+	err = skn.WriteFile("/test", nil, 0644)
+	c.Assert(err, NotNil)
+}
+
 func (s *KatanaSuite) TestBasic(c *C) {
 	var skn *Secret
 
@@ -154,4 +164,13 @@ func (s *KatanaSuite) TestBasic(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "TEST-DATA-1234")
 	c.Assert(f.Close(), IsNil)
+
+	tmpFile2 := c.MkDir() + "/file2.txt"
+
+	err = sk.WriteFile(tmpFile2, []byte("TEST-DATA-1234-2"), 0644)
+	c.Assert(err, IsNil)
+
+	data, err = sk.ReadFile(tmpFile2)
+	c.Assert(err, IsNil)
+	c.Assert(string(data), Equals, "TEST-DATA-1234-2")
 }

@@ -254,6 +254,34 @@ func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error
 	return &File{fd: fd, cfg: sio.Config{Key: key}, salt: salt}, nil
 }
 
+// ReadFile reads the named file and returns the contents
+func (s *Secret) ReadFile(name string) ([]byte, error) {
+	f, err := s.Open(name)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	return io.ReadAll(f)
+}
+
+// WriteFile writes data to the named file, creating it if necessary
+func (s *Secret) WriteFile(name string, data []byte, perm os.FileMode) error {
+	f, err := s.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	_, err = f.Write(data)
+
+	return err
+}
+
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // addKeyData appends key data
