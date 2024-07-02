@@ -46,7 +46,7 @@ jobs:
       - name: Run tests
         run: go test -v -covermode count -coverprofile cover.out ./...
 
-      - name: Send coverage data
+      - name: Send coverage data to Coveralls
         uses: essentialkaos/goveralls-action@v2
         env:
           COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
