@@ -47,6 +47,8 @@ func (s *KatanaSuite) TestSecretBuild(c *C) {
 	sk.AddFile(tempFile)
 
 	c.Assert(sk.Validate(), IsNil)
+	c.Assert(sk.Checksum(), HasLen, 124)
+	c.Assert(sk.Checksum().Short(), Equals, "4142434")
 }
 
 func (s *KatanaSuite) TestSecretErrors(c *C) {
@@ -81,6 +83,10 @@ func (s *KatanaSuite) TestSecretErrors(c *C) {
 	c.Assert(NewSecret("!").AddFile("test").Validate().Error(), Equals, "Can't open file \"test\": open test: no such file or directory")
 
 	c.Assert(skn.Validate(), Equals, ErrNilSecret)
+
+	c.Assert(skn.Checksum(), IsNil)
+	c.Assert(skn.Checksum().String(), Equals, "")
+	c.Assert(skn.Checksum().Short(), Equals, "")
 
 	skm := &Secret{}
 	c.Assert(skm.Validate(), Equals, ErrEmptySecretData)
