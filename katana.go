@@ -38,6 +38,8 @@ type File struct {
 	w    io.WriteCloser
 }
 
+type Checksum []byte
+
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 var (
@@ -197,6 +199,36 @@ func (s *Secret) Validate() error {
 	}
 
 	return nil
+}
+
+// Checksum returns secret checksum
+func (s *Secret) Checksum() Checksum {
+	if s == nil || s.pwd == nil || s.pwd.IsEmpty() {
+		return nil
+	}
+
+	hasher := sha512.New512_256()
+	return Checksum(hasher.Sum(s.pwd.Data))
+}
+
+// ////////////////////////////////////////////////////////////////////////////////// //
+
+// String returns full checksum as string
+func (c Checksum) String() string {
+	if len(c) != 124 {
+		return ""
+	}
+
+	return fmt.Sprintf("%064x", []byte(c))
+}
+
+// Short returns short checksum (first 7 bytes)
+func (c Checksum) Short() string {
+	if len(c) != 124 {
+		return ""
+	}
+
+	return c.String()[:7]
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
