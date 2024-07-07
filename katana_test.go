@@ -47,8 +47,9 @@ func (s *KatanaSuite) TestSecretBuild(c *C) {
 	sk.AddFile(tempFile)
 
 	c.Assert(sk.Validate(), IsNil)
-	c.Assert(sk.Checksum(), HasLen, 124)
-	c.Assert(sk.Checksum().Short(), Equals, "4142434")
+	c.Assert(sk.Checksum(), HasLen, 32)
+	c.Assert(sk.Checksum().String(), Equals, "9dc7364c4a6938d21dfe9ba4755355d7a29620ddcce9dbbdc932027f642bc601")
+	c.Assert(sk.Checksum().Short(), Equals, "9dc7364")
 }
 
 func (s *KatanaSuite) TestSecretErrors(c *C) {
