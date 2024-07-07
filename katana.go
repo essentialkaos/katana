@@ -208,14 +208,15 @@ func (s *Secret) Checksum() Checksum {
 	}
 
 	hasher := sha512.New512_256()
-	return Checksum(hasher.Sum(s.pwd.Data))
+	hasher.Write(s.pwd.Data)
+	return Checksum(hasher.Sum(nil))
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // String returns full checksum as string
 func (c Checksum) String() string {
-	if len(c) != 124 {
+	if len(c) != 32 {
 		return ""
 	}
 
@@ -224,7 +225,7 @@ func (c Checksum) String() string {
 
 // Short returns short checksum (first 7 bytes)
 func (c Checksum) Short() string {
-	if len(c) != 124 {
+	if len(c) != 32 {
 		return ""
 	}
 
