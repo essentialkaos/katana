@@ -35,62 +35,63 @@ func (s *KatanaSuite) TestSecretBuild(c *C) {
 	err := os.WriteFile(tempFile, []byte("TESTdata1234"), 0644)
 	c.Assert(err, IsNil)
 
-	sk := NewSecret("ABCD")
-	c.Assert(sk, NotNil)
-	c.Assert(sk.Validate(), IsNil)
-	c.Assert(sk.pwd.Data, DeepEquals, []byte("ABCD"))
+	skrt := NewSecret("ABCD")
+	c.Assert(skrt, NotNil)
+	c.Assert(skrt.Validate(), IsNil)
+	c.Assert(skrt.pwd, DeepEquals, []byte("ABCD"))
 
-	sk.Add("[STATIC]")
-	sk.AddHex("5b4845585d")
-	sk.AddBase64("W0JBU0Vd")
-	sk.AddEnv("KATANA_TEST_KEY")
-	sk.AddFile(tempFile)
+	skrt.Add("[STATIC]")
+	skrt.AddHex("5b4845585d")
+	skrt.AddBase64("W0JBU0Vd")
+	skrt.AddEnv("KATANA_TEST_KEY")
+	skrt.AddFile(tempFile)
 
-	c.Assert(sk.Validate(), IsNil)
-	c.Assert(sk.Checksum(), HasLen, 32)
-	c.Assert(sk.Checksum().String(), Equals, "9dc7364c4a6938d21dfe9ba4755355d7a29620ddcce9dbbdc932027f642bc601")
-	c.Assert(sk.Checksum().Short(), Equals, "9dc7364")
+	c.Assert(skrt.Validate(), IsNil)
+	c.Assert(skrt.Checksum(), HasLen, 32)
+	c.Assert(skrt.Checksum().String(), Equals, "9dc7364c4a6938d21dfe9ba4755355d7a29620ddcce9dbbdc932027f642bc601")
+	c.Assert(skrt.Checksum().Short(), Equals, "9dc7364")
+	c.Assert(skrt.String(), Equals, "katana.Secret{9dc7364}")
 }
 
 func (s *KatanaSuite) TestSecretErrors(c *C) {
-	var skn *Secret
+	var skrt *Secret
 
 	c.Assert(NewSecret("").Validate(), Equals, ErrEmptySecretData)
 
-	ske := &Secret{err: fmt.Errorf("TEST-ERROR")}
+	skrt2 := &Secret{err: fmt.Errorf("TEST-ERROR")}
 
 	c.Assert(NewSecret("!").Add("").Validate(), Equals, ErrEmptySecretData)
-	c.Assert(skn.Add("test").Validate(), Equals, ErrNilSecret)
-	c.Assert(ske.Add("test").Validate().Error(), Equals, "TEST-ERROR")
+	c.Assert(skrt.Add("test").Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt2.Add("test").Validate().Error(), Equals, "TEST-ERROR")
 
 	c.Assert(NewSecret("!").AddHex("").Validate(), Equals, ErrEmptySecretData)
-	c.Assert(skn.AddHex("test").Validate(), Equals, ErrNilSecret)
-	c.Assert(ske.AddHex("test").Validate().Error(), Equals, "TEST-ERROR")
+	c.Assert(skrt.AddHex("test").Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt2.AddHex("test").Validate().Error(), Equals, "TEST-ERROR")
 	c.Assert(NewSecret("!").AddHex("%!$%").Validate().Error(), Equals, "encoding/hex: invalid byte: U+0025 '%'")
 
 	c.Assert(NewSecret("!").AddBase64("").Validate(), Equals, ErrEmptySecretData)
-	c.Assert(skn.AddBase64("test").Validate(), Equals, ErrNilSecret)
-	c.Assert(ske.AddBase64("test").Validate().Error(), Equals, "TEST-ERROR")
+	c.Assert(skrt.AddBase64("test").Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt2.AddBase64("test").Validate().Error(), Equals, "TEST-ERROR")
 	c.Assert(NewSecret("!").AddBase64("%!$%").Validate().Error(), Equals, "illegal base64 data at input byte 0")
 
 	c.Assert(NewSecret("!").AddEnv("").Validate(), Equals, ErrEmptyEnvVarName)
 	c.Assert(NewSecret("!").AddEnv("test").Validate(), Equals, ErrEmptyEnvVar)
-	c.Assert(skn.AddEnv("test").Validate(), Equals, ErrNilSecret)
-	c.Assert(ske.AddEnv("test").Validate().Error(), Equals, "TEST-ERROR")
+	c.Assert(skrt.AddEnv("test").Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt2.AddEnv("test").Validate().Error(), Equals, "TEST-ERROR")
 
 	c.Assert(NewSecret("!").AddFile("").Validate(), Equals, ErrEmptySecretPath)
-	c.Assert(skn.AddFile("test").Validate(), Equals, ErrNilSecret)
-	c.Assert(ske.AddFile("test").Validate().Error(), Equals, "TEST-ERROR")
+	c.Assert(skrt.AddFile("test").Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt2.AddFile("test").Validate().Error(), Equals, "TEST-ERROR")
 	c.Assert(NewSecret("!").AddFile("test").Validate().Error(), Equals, "Can't open file \"test\": open test: no such file or directory")
 
-	c.Assert(skn.Validate(), Equals, ErrNilSecret)
+	c.Assert(skrt.Validate(), Equals, ErrNilSecret)
 
-	c.Assert(skn.Checksum(), IsNil)
-	c.Assert(skn.Checksum().String(), Equals, "")
-	c.Assert(skn.Checksum().Short(), Equals, "")
+	c.Assert(skrt.Checksum(), IsNil)
+	c.Assert(skrt.Checksum().String(), Equals, "")
+	c.Assert(skrt.Checksum().Short(), Equals, "")
 
-	skm := &Secret{}
-	c.Assert(skm.Validate(), Equals, ErrEmptySecretData)
+	skrt3 := &Secret{}
+	c.Assert(skrt3.Validate(), Equals, ErrEmptySecretData)
 }
 
 func (s *KatanaSuite) TestFileErrors(c *C) {
@@ -113,32 +114,39 @@ func (s *KatanaSuite) TestFileErrors(c *C) {
 }
 
 func (s *KatanaSuite) TestHelpersErrors(c *C) {
-	var skn *Secret
+	var skrt *Secret
 
-	_, err := skn.ReadFile("/test")
+	_, err := skrt.ReadFile("/test")
 	c.Assert(err, NotNil)
 
-	err = skn.WriteFile("/test", nil, 0644)
+	err = skrt.WriteFile("/test", nil, 0644)
 	c.Assert(err, NotNil)
 }
 
-func (s *KatanaSuite) TestBasic(c *C) {
-	var skn *Secret
+func (s *KatanaSuite) TestFile(c *C) {
+	var skrt *Secret
 
-	_, err := skn.OpenFile("/test", os.O_CREATE|os.O_RDWR, 0644)
+	_, err := skrt.OpenFile("/test", os.O_CREATE|os.O_RDWR, 0644)
 	c.Assert(err, Equals, ErrNilSecret)
-	_, err = skn.Open("/test")
+	_, err = skrt.Open("/test")
 	c.Assert(err, Equals, ErrNilSecret)
 
-	sk := NewSecret("TEST")
-	c.Assert(sk.Validate(), IsNil)
+	skrt = NewSecret("TEST")
+	c.Assert(skrt.Validate(), IsNil)
 
-	_, err = sk.OpenFile("/test", os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
-	c.Assert(err, Equals, ErrAppendNotSupported)
+	_, err = skrt.OpenFile("/test", os.O_CREATE|os.O_APPEND, 0644)
+	c.Assert(err.Error(), Equals, `Can't open file "/test": Unsupported flag O_APPEND`)
+	_, err = skrt.OpenFile("/test", os.O_CREATE|os.O_RDWR, 0644)
+	c.Assert(err.Error(), Equals, `Can't open file "/test": Unsupported flag O_RDWR`)
+
+	_, err = skrt.Open("/test")
+	c.Assert(err, NotNil)
+	_, err = skrt.OpenFile("/test", os.O_CREATE|os.O_RDONLY, 0644)
+	c.Assert(err, NotNil)
 
 	tmpFile := c.MkDir() + "/file.txt"
 
-	f, err := sk.OpenFile(tmpFile, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := skrt.OpenFile(tmpFile, os.O_CREATE|os.O_RDONLY, 0644)
 	c.Assert(err, IsNil)
 	c.Assert(f, NotNil)
 	c.Assert(f.Name(), Equals, tmpFile)
@@ -149,14 +157,25 @@ func (s *KatanaSuite) TestBasic(c *C) {
 	c.Assert(f.Chown(-1, os.Getgid()), IsNil)
 	c.Assert(f.Close(), IsNil)
 
-	f, err = sk.OpenFile(tmpFile, os.O_CREATE|os.O_RDWR, 0644)
+	f, err = skrt.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY, 0644)
 	c.Assert(err, IsNil)
 	c.Assert(f, NotNil)
-	_, err = f.Write([]byte("TEST-DATA-1234"))
+	_, err = f.Write([]byte("TEST-DATA"))
+	c.Assert(err, IsNil)
+	_, err = f.Write([]byte("-1234"))
 	c.Assert(err, IsNil)
 	c.Assert(f.Close(), IsNil)
 
-	f, err = sk.OpenFile(tmpFile, os.O_CREATE|os.O_RDWR, 0644)
+	f, err = skrt.OpenFile(tmpFile, os.O_CREATE|os.O_RDONLY, 0644)
+	c.Assert(err, IsNil)
+	c.Assert(f, NotNil)
+	_, err = f.Read(make([]byte, 4))
+	c.Assert(err, IsNil)
+	_, err = f.Read(make([]byte, 4))
+	c.Assert(err, IsNil)
+	c.Assert(f.Close(), IsNil)
+
+	f, err = skrt.Open(tmpFile)
 	c.Assert(err, IsNil)
 	c.Assert(f, NotNil)
 	data, err := io.ReadAll(f)
@@ -164,20 +183,52 @@ func (s *KatanaSuite) TestBasic(c *C) {
 	c.Assert(string(data), Equals, "TEST-DATA-1234")
 	c.Assert(f.Close(), IsNil)
 
-	f, err = sk.Open(tmpFile)
-	c.Assert(err, IsNil)
-	c.Assert(f, NotNil)
-	data, err = io.ReadAll(f)
-	c.Assert(err, IsNil)
-	c.Assert(string(data), Equals, "TEST-DATA-1234")
-	c.Assert(f.Close(), IsNil)
-
 	tmpFile2 := c.MkDir() + "/file2.txt"
 
-	err = sk.WriteFile(tmpFile2, []byte("TEST-DATA-1234-2"), 0644)
+	err = skrt.WriteFile(tmpFile2, []byte("TEST-DATA-1234-2"), 0644)
 	c.Assert(err, IsNil)
 
-	data, err = sk.ReadFile(tmpFile2)
+	data, err = skrt.ReadFile(tmpFile2)
 	c.Assert(err, IsNil)
 	c.Assert(string(data), Equals, "TEST-DATA-1234-2")
+}
+
+func (s *KatanaSuite) TestReaderWriter(c *C) {
+	skrt := NewSecret("TEST")
+	tmpFile := c.MkDir() + "/file.txt"
+
+	// WRITER
+
+	fd, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY, 0644)
+	c.Assert(err, IsNil)
+	c.Assert(fd, NotNil)
+
+	w, err := skrt.NewWriter(fd)
+	c.Assert(err, IsNil)
+	c.Assert(w.String(), Equals, "katana.Writer{nil}")
+
+	_, err = w.Write([]byte("Test1234"))
+	c.Assert(err, IsNil)
+	_, err = w.Write([]byte("Test1234"))
+	c.Assert(err, IsNil)
+	c.Assert(w.String(), Equals, "katana.Writer{}")
+
+	err = w.Close()
+	c.Assert(err, IsNil)
+
+	// READER
+
+	fd, err = os.Open(tmpFile)
+	c.Assert(err, IsNil)
+	c.Assert(fd, NotNil)
+
+	r, err := skrt.NewReader(fd)
+	c.Assert(err, IsNil)
+	c.Assert(r.String(), Equals, "katana.Reader{nil}")
+
+	_, err = r.Read(make([]byte, 8))
+	c.Assert(err, IsNil)
+	_, err = r.Read(make([]byte, 8))
+	c.Assert(err, IsNil)
+	c.Assert(r.String(), Equals, "katana.Reader{}")
 }
