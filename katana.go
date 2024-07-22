@@ -19,38 +19,55 @@ import (
 	"golang.org/x/crypto/scrypt"
 
 	"github.com/essentialkaos/sio"
-
-	"github.com/essentialkaos/katana/secstr"
 )
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
+const SALT_SIZE = 32
+
+// ////////////////////////////////////////////////////////////////////////////////// //
+
+// Secret is katana secret storage
 type Secret struct {
-	pwd *secstr.String
+	pwd []byte
 	err error
 }
 
-type File struct {
-	fd   *os.File
-	salt []byte
-	cfg  sio.Config
-	r    io.Reader
-	w    io.WriteCloser
+// Reader is encrypted data reader
+type Reader struct {
+	secret    *Secret
+	rawReader io.Reader
+	decReader io.Reader
 }
 
+// Reader is encrypted data writer
+type Writer struct {
+	secret    *Secret
+	rawWriter io.WriteCloser
+	encWriter io.WriteCloser
+}
+
+// File represents encrypted file
+type File struct {
+	secret *Secret
+	fd     *os.File
+	r      *Reader
+	w      *Writer
+}
+
+// Checksum is secret checksum
 type Checksum []byte
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 var (
-	ErrNilFile            = fmt.Errorf("File is nil")
-	ErrNilSecret          = fmt.Errorf("Secret is nil")
-	ErrEmptySecret        = fmt.Errorf("Secret is empty")
-	ErrEmptySecretData    = fmt.Errorf("Secret data is empty")
-	ErrEmptySecretPath    = fmt.Errorf("Secret path is empty")
-	ErrEmptyEnvVarName    = fmt.Errorf("Environment variable name is empty")
-	ErrEmptyEnvVar        = fmt.Errorf("Environment variable is empty")
-	ErrAppendNotSupported = fmt.Errorf("Encrypted writer doesn't support O_APPEND flag")
+	ErrNilFile         = fmt.Errorf("File is nil")
+	ErrNilSecret       = fmt.Errorf("Secret is nil")
+	ErrEmptySecret     = fmt.Errorf("Secret is empty")
+	ErrEmptySecretData = fmt.Errorf("Secret data is empty")
+	ErrEmptySecretPath = fmt.Errorf("Secret path is empty")
+	ErrEmptyEnvVarName = fmt.Errorf("Environment variable name is empty")
+	ErrEmptyEnvVar     = fmt.Errorf("Environment variable is empty")
 )
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -75,7 +92,7 @@ func (s *Secret) Add(data string) *Secret {
 		return s
 	}
 
-	s.err = s.addKeyData([]byte(data))
+	s.addKeyData([]byte(data))
 
 	return s
 }
@@ -99,7 +116,7 @@ func (s *Secret) AddHex(data string) *Secret {
 		return s
 	}
 
-	s.err = s.addKeyData(bytes)
+	s.addKeyData(bytes)
 
 	return s
 }
@@ -123,7 +140,7 @@ func (s *Secret) AddBase64(data string) *Secret {
 		return s
 	}
 
-	s.err = s.addKeyData(bytes)
+	s.addKeyData(bytes)
 
 	return s
 }
@@ -143,7 +160,7 @@ func (s *Secret) AddEnv(name string) *Secret {
 		return s
 	}
 
-	s.err = s.addKeyData([]byte(os.Getenv(name)))
+	s.addKeyData([]byte(os.Getenv(name)))
 
 	err := os.Setenv(name, "")
 
@@ -182,7 +199,7 @@ func (s *Secret) AddFile(file string) *Secret {
 		return s
 	}
 
-	s.err = s.addKeyData(hasher.Sum(nil))
+	s.addKeyData(hasher.Sum(nil))
 
 	return s
 }
@@ -194,7 +211,7 @@ func (s *Secret) Validate() error {
 		return ErrNilSecret
 	case s.err != nil:
 		return s.err
-	case s.pwd.IsEmpty():
+	case len(s.pwd) == 0:
 		return ErrEmptySecretData
 	}
 
@@ -203,13 +220,19 @@ func (s *Secret) Validate() error {
 
 // Checksum returns secret checksum
 func (s *Secret) Checksum() Checksum {
-	if s == nil || s.pwd == nil || s.pwd.IsEmpty() {
+	if s == nil || s.pwd == nil || len(s.pwd) == 0 {
 		return nil
 	}
 
 	hasher := sha512.New512_256()
-	hasher.Write(s.pwd.Data)
+	hasher.Write(s.pwd)
+
 	return Checksum(hasher.Sum(nil))
+}
+
+// String returns string representation of secret
+func (s *Secret) String() string {
+	return fmt.Sprintf("katana.Secret{%s}", s.Checksum().Short())
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -234,16 +257,32 @@ func (c Checksum) Short() string {
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-// Open opens the named file for reading. If successful, methods on the returned file
-// can be used for reading; the associated file descriptor has mode O_RDONLY.
-func (s *Secret) Open(name string) (*File, error) {
+// NewReader creates new reader instance
+func (s *Secret) NewReader(r io.Reader) (*Reader, error) {
 	err := s.Validate()
 
 	if err != nil {
 		return nil, err
 	}
 
-	key, salt, err := s.deriveKey(name)
+	return &Reader{secret: s, rawReader: r}, nil
+}
+
+// NewWriter creates new writer instance
+func (s *Secret) NewWriter(w io.WriteCloser) (*Writer, error) {
+	err := s.Validate()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &Writer{secret: s, rawWriter: w}, nil
+}
+
+// Open opens the named file for reading. If successful, methods on the returned file
+// can be used for reading; the associated file descriptor has mode O_RDONLY.
+func (s *Secret) Open(name string) (*File, error) {
+	err := s.Validate()
 
 	if err != nil {
 		return nil, err
@@ -255,7 +294,7 @@ func (s *Secret) Open(name string) (*File, error) {
 		return nil, fmt.Errorf("Can't open file: %v", err)
 	}
 
-	return &File{fd: fd, cfg: sio.Config{Key: key}, salt: salt}, nil
+	return &File{secret: s, fd: fd}, nil
 }
 
 // OpenFile opens the named file with specified flag (O_RDONLY etc.). If the file does
@@ -268,14 +307,11 @@ func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error
 		return nil, err
 	}
 
-	if flag&os.O_APPEND != 0 {
-		return nil, ErrAppendNotSupported
-	}
-
-	key, salt, err := s.deriveKey(name)
-
-	if err != nil {
-		return nil, err
+	switch {
+	case flag&os.O_APPEND != 0:
+		return nil, fmt.Errorf("Can't open file %q: Unsupported flag O_APPEND", name)
+	case flag&os.O_RDWR != 0:
+		return nil, fmt.Errorf("Can't open file %q: Unsupported flag O_RDWR", name)
 	}
 
 	fd, err := os.OpenFile(name, flag, perm)
@@ -284,7 +320,7 @@ func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error
 		return nil, fmt.Errorf("Can't open file: %v", err)
 	}
 
-	return &File{fd: fd, cfg: sio.Config{Key: key}, salt: salt}, nil
+	return &File{secret: s, fd: fd}, nil
 }
 
 // ReadFile reads the named file and returns the contents
@@ -302,7 +338,7 @@ func (s *Secret) ReadFile(name string) ([]byte, error) {
 
 // WriteFile writes data to the named file, creating it if necessary
 func (s *Secret) WriteFile(name string, data []byte, perm os.FileMode) error {
-	f, err := s.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	f, err := s.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
 
 	if err != nil {
 		return err
@@ -317,85 +353,155 @@ func (s *Secret) WriteFile(name string, data []byte, perm os.FileMode) error {
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-// addKeyData appends key data
-func (s *Secret) addKeyData(data []byte) error {
-	var err error
-
-	if s.pwd == nil {
-		s.pwd, err = secstr.NewSecureString(data)
-
-		if err != nil {
-			return fmt.Errorf("Can't create secure string: %v", err)
-		}
-	} else {
-		defer s.pwd.Destroy()
-
-		s.pwd, err = secstr.NewSecureString(append(s.pwd.Data, data...))
-
-		if err != nil {
-			return fmt.Errorf("Can't create secure string: %v", err)
-		}
+// Read reads and decrypts data
+func (r *Reader) Read(p []byte) (n int, err error) {
+	if r.decReader != nil {
+		return r.decReader.Read(p)
 	}
 
-	return nil
+	// read the first 32 bytes with salt
+	salt := make([]byte, SALT_SIZE)
+	_, err = io.ReadFull(r.rawReader, salt)
+
+	if err != nil {
+		return 0, fmt.Errorf("Can't read salt: %w", err)
+	}
+
+	key, _, err := deriveKey(r.secret.pwd, salt)
+
+	if err != nil {
+		return 0, fmt.Errorf("Error while key generation: %w", err)
+	}
+
+	r.decReader, err = sio.DecryptReader(r.rawReader, sio.Config{
+		Key:          key,
+		CipherSuites: []byte{sio.CHACHA20_POLY1305},
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("Can't create decrypt reader: %w", err)
+	}
+
+	return r.decReader.Read(p)
 }
 
-// deriveKey creates derived key from secret
-func (s *Secret) deriveKey(file string) ([]byte, []byte, error) {
-	salt, hasSalt := make([]byte, 32), false
-	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
+// String returns string representation of reader
+func (r *Reader) String() string {
+	if r == nil || r.decReader == nil {
+		return "katana.Reader{nil}"
+	}
+
+	return "katana.Reader{}"
+}
+
+// Write encrypts and writes data
+func (w *Writer) Write(p []byte) (n int, err error) {
+	if w.encWriter != nil {
+		return w.encWriter.Write(p)
+	}
+
+	key, salt, err := deriveKey(w.secret.pwd, nil)
 
 	if err != nil {
-		if os.IsNotExist(err) {
-			_, err = io.ReadFull(rand.Reader, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
-			}
-		} else {
-			return nil, nil, err
-		}
-	} else {
-		defer fd.Close()
-
-		info, err := fd.Stat()
-
-		if err != nil {
-			return nil, nil, fmt.Errorf("Can't read file info: %v", err)
-		}
-
-		if info.Size() == 0 {
-			_, err = io.ReadFull(rand.Reader, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't generate random salt: %v", err)
-			}
-		} else {
-			_, err := io.ReadFull(fd, salt)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("Can't read salt from file: %v", err)
-			}
-
-			hasSalt = true
-		}
+		return 0, fmt.Errorf("Error while key generation: %w", err)
 	}
 
-	secretData := append([]byte{}, s.pwd.Data...)
-	key, err := scrypt.Key(secretData, salt, 32768, 16, 1, 32)
+	// write salt to the beginning of the file
+	_, err = w.rawWriter.Write(salt)
 
 	if err != nil {
-		return nil, nil, fmt.Errorf("Can't derive key from secret: %v", err)
+		return 0, fmt.Errorf("Error while writing salt: %w", err)
 	}
 
-	if hasSalt {
-		return key, nil, nil
+	w.encWriter, err = sio.EncryptWriter(w.rawWriter, sio.Config{
+		Key:          key,
+		CipherSuites: []byte{sio.CHACHA20_POLY1305},
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("Can't create encrypt writer: %w", err)
 	}
 
-	return key, salt, nil
+	return w.encWriter.Write(p)
+}
+
+// Close closes writer
+func (w *Writer) Close() error {
+	return w.encWriter.Close()
+}
+
+// String returns string representation of writer
+func (w *Writer) String() string {
+	if w == nil || w.encWriter == nil {
+		return "katana.Writer{nil}"
+	}
+
+	return "katana.Writer{}"
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
+
+// Write writes len(b) bytes from b to the File
+func (f *File) Write(b []byte) (int, error) {
+	if f == nil || f.fd == nil {
+		return 0, ErrNilFile
+	}
+
+	if f.w != nil {
+		return f.w.Write(b)
+	}
+
+	var err error
+
+	f.w, err = f.secret.NewWriter(f.fd)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return f.w.Write(b)
+}
+
+// Read reads up to len(b) bytes from the File and stores them in b
+func (f *File) Read(b []byte) (int, error) {
+	if f == nil || f.fd == nil {
+		return 0, ErrNilFile
+	}
+
+	if f.r != nil {
+		return f.r.Read(b)
+	}
+
+	var err error
+
+	f.r, err = f.secret.NewReader(f.fd)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return f.r.Read(b)
+}
+
+// Close closes the File, rendering it unusable for I/O
+func (f *File) Close() error {
+	if f == nil || f.fd == nil {
+		return ErrNilFile
+	}
+
+	var err error
+
+	// Close underlay writer
+	if f.w != nil {
+		err = f.w.Close()
+	} else {
+		err = f.fd.Close()
+	}
+
+	f.secret = nil
+
+	return err
+}
 
 // Name returns the name of the file as presented to Open
 func (f *File) Name() string {
@@ -433,29 +539,6 @@ func (f *File) Chown(uid, gid int) error {
 	return f.fd.Chown(uid, gid)
 }
 
-// Close closes the File, rendering it unusable for I/O
-func (f *File) Close() error {
-	if f == nil || f.fd == nil {
-		return ErrNilFile
-	}
-
-	var err error
-
-	// Close underlay text writer
-	if f.w != nil {
-		err = f.w.Close()
-	} else {
-		err = f.fd.Close()
-	}
-
-	// Clean key data
-	if len(f.cfg.Key) > 0 {
-		clearByteSlice(f.cfg.Key)
-	}
-
-	return err
-}
-
 // String returns string representation of File
 func (f *File) String() string {
 	if f == nil || f.fd == nil {
@@ -465,64 +548,31 @@ func (f *File) String() string {
 	return fmt.Sprintf("&katana.File{%s}", f.fd.Name())
 }
 
-// Write writes len(b) bytes from b to the File
-func (f *File) Write(b []byte) (int, error) {
-	if f == nil || f.fd == nil {
-		return 0, ErrNilFile
+// ////////////////////////////////////////////////////////////////////////////////// //
+
+// addKeyData appends key data
+func (s *Secret) addKeyData(data []byte) {
+	s.pwd = append(s.pwd, data...)
+
+	for i := range data {
+		data[i] = 0
 	}
-
-	var err error
-
-	if len(f.salt) > 0 {
-		_, err = f.fd.Write(f.salt)
-
-		if err != nil {
-			return 0, fmt.Errorf("Can't write salt into file: %v", err)
-		}
-
-		f.salt = nil
-	}
-
-	// Lazy writer initialization
-	if f.w == nil {
-		f.w, err = sio.EncryptWriter(f.fd, f.cfg)
-
-		if err != nil {
-			return 0, fmt.Errorf("Can't create encrypted writer: %v", err)
-		}
-	}
-
-	return f.w.Write(b)
-}
-
-// Read reads up to len(b) bytes from the File and stores them in b
-func (f *File) Read(b []byte) (int, error) {
-	if f == nil || f.fd == nil {
-		return 0, ErrNilFile
-	}
-
-	var err error
-
-	// Lazy reader initialization
-	if f.r == nil {
-		// Skip salt bytes
-		f.fd.Seek(32, io.SeekStart)
-
-		f.r, err = sio.DecryptReader(f.fd, f.cfg)
-
-		if err != nil {
-			return 0, fmt.Errorf("Can't create encrypted reader: %v", err)
-		}
-	}
-
-	return f.r.Read(b)
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-// clearByteSlice clears byte slice
-func clearByteSlice(s []byte) {
-	for i := range s {
-		s[i] = 0
+// deriveKey creates derived key from secret and salt
+func deriveKey(key, salt []byte) ([]byte, []byte, error) {
+	if len(salt) == 0 {
+		salt = make([]byte, SALT_SIZE)
+		io.ReadFull(rand.Reader, salt)
 	}
+
+	keyData, err := scrypt.Key(key, salt, 32768, 16, 1, SALT_SIZE)
+
+	if err != nil {
+		return nil, salt, err
+	}
+
+	return keyData, salt, nil
 }
