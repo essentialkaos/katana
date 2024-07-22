@@ -8,6 +8,7 @@ package katana
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha512"
 	"encoding/base64"
@@ -23,9 +24,18 @@ import (
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
+// SALT_SIZE is default salt size
 const SALT_SIZE = 32
 
+const (
+	MODE_ENCRYPT Mode = 0 // Encryption mode
+	MODE_DECRYPT Mode = 1 // Decryption mode
+)
+
 // ////////////////////////////////////////////////////////////////////////////////// //
+
+// Mode is reader/writer mode
+type Mode uint8
 
 // Secret is katana secret storage
 type Secret struct {
@@ -37,14 +47,16 @@ type Secret struct {
 type Reader struct {
 	secret    *Secret
 	rawReader io.Reader
-	decReader io.Reader
+	sioReader io.Reader
+	mode      Mode
 }
 
 // Reader is encrypted data writer
 type Writer struct {
 	secret    *Secret
 	rawWriter io.WriteCloser
-	encWriter io.WriteCloser
+	sioWriter io.WriteCloser
+	mode      Mode
 }
 
 // File represents encrypted file
@@ -57,6 +69,14 @@ type File struct {
 
 // Checksum is secret checksum
 type Checksum []byte
+
+// ////////////////////////////////////////////////////////////////////////////////// //
+
+type intercepterWriter struct {
+	secret *Secret
+	salt   []byte
+	w      io.WriteCloser
+}
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
@@ -165,7 +185,7 @@ func (s *Secret) AddEnv(name string) *Secret {
 	err := os.Setenv(name, "")
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't clean secret from environment variable: %v", err)
+		s.err = fmt.Errorf("Can't clean secret from environment variable: %w", err)
 		return s
 	}
 
@@ -187,7 +207,7 @@ func (s *Secret) AddFile(file string) *Secret {
 	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't open file %q: %v", file, err)
+		s.err = fmt.Errorf("Can't open file %q: %w", file, err)
 		return s
 	}
 
@@ -195,7 +215,7 @@ func (s *Secret) AddFile(file string) *Secret {
 	_, err = io.Copy(hasher, fd)
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't calculate file %q hash: %v", file, err)
+		s.err = fmt.Errorf("Can't calculate file %q hash: %w", file, err)
 		return s
 	}
 
@@ -257,15 +277,26 @@ func (c Checksum) Short() string {
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
+// String returns string representation of mode
+func (m Mode) String() string {
+	if m == MODE_DECRYPT {
+		return "DECRYPT"
+	}
+
+	return "ENCRYPT"
+}
+
+// ////////////////////////////////////////////////////////////////////////////////// //
+
 // NewReader creates new reader instance
-func (s *Secret) NewReader(r io.Reader) (*Reader, error) {
+func (s *Secret) NewReader(r io.Reader, mode Mode) (*Reader, error) {
 	err := s.Validate()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return &Reader{secret: s, rawReader: r}, nil
+	return &Reader{secret: s, rawReader: r, mode: mode}, nil
 }
 
 // NewWriter creates new writer instance
@@ -276,7 +307,62 @@ func (s *Secret) NewWriter(w io.WriteCloser) (*Writer, error) {
 		return nil, err
 	}
 
-	return &Writer{secret: s, rawWriter: w}, nil
+	return &Writer{secret: s, rawWriter: w, mode: MODE_ENCRYPT}, nil
+}
+
+// Encrypt encrypts given data
+func (s *Secret) Encrypt(data []byte) ([]byte, error) {
+	err := s.Validate()
+
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, salt, err := getSIOConfig(s.pwd, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+	}
+
+	buf := bytes.NewBuffer(salt)
+	_, err = sio.Encrypt(buf, bytes.NewReader(data), cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't encrypt data: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// Decrypt decrypts given data
+func (s *Secret) Decrypt(data []byte) ([]byte, error) {
+	err := s.Validate()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(data) < SALT_SIZE {
+		return nil, fmt.Errorf("Invalid data size to decrypt")
+	}
+
+	salt := data[:SALT_SIZE]
+	data = data[SALT_SIZE:]
+
+	cfg, _, err := getSIOConfig(s.pwd, salt)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+	}
+
+	buf := bytes.NewBufferString("")
+	_, err = sio.Decrypt(buf, bytes.NewReader(data), cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't decrypt data: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
 
 // Open opens the named file for reading. If successful, methods on the returned file
@@ -291,7 +377,7 @@ func (s *Secret) Open(name string) (*File, error) {
 	fd, err := os.Open(name)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't open file: %v", err)
+		return nil, fmt.Errorf("Can't open file: %w", err)
 	}
 
 	return &File{secret: s, fd: fd}, nil
@@ -317,7 +403,7 @@ func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error
 	fd, err := os.OpenFile(name, flag, perm)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't open file: %v", err)
+		return nil, fmt.Errorf("Can't open file: %w", err)
 	}
 
 	return &File{secret: s, fd: fd}, nil
@@ -354,89 +440,64 @@ func (s *Secret) WriteFile(name string, data []byte, perm os.FileMode) error {
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Read reads and decrypts data
-func (r *Reader) Read(p []byte) (n int, err error) {
-	if r.decReader != nil {
-		return r.decReader.Read(p)
+func (r *Reader) Read(p []byte) (int, error) {
+	if r.sioReader != nil {
+		return r.sioReader.Read(p)
 	}
 
-	// read the first 32 bytes with salt
-	salt := make([]byte, SALT_SIZE)
-	_, err = io.ReadFull(r.rawReader, salt)
+	var err error
+
+	if r.mode == MODE_DECRYPT {
+		r.sioReader, err = r.secret.getDecryptReader(r.rawReader)
+	} else {
+		r.sioReader, err = r.secret.getEncryptReader(r.rawReader)
+	}
 
 	if err != nil {
-		return 0, fmt.Errorf("Can't read salt: %w", err)
+		return 0, fmt.Errorf("Can't create SIO reader: %w", err)
 	}
 
-	key, _, err := deriveKey(r.secret.pwd, salt)
-
-	if err != nil {
-		return 0, fmt.Errorf("Error while key generation: %w", err)
-	}
-
-	r.decReader, err = sio.DecryptReader(r.rawReader, sio.Config{
-		Key:          key,
-		CipherSuites: []byte{sio.CHACHA20_POLY1305},
-	})
-
-	if err != nil {
-		return 0, fmt.Errorf("Can't create decrypt reader: %w", err)
-	}
-
-	return r.decReader.Read(p)
+	return r.sioReader.Read(p)
 }
 
 // String returns string representation of reader
 func (r *Reader) String() string {
-	if r == nil || r.decReader == nil {
+	if r == nil || r.sioReader == nil {
 		return "katana.Reader{nil}"
 	}
 
-	return "katana.Reader{}"
+	return fmt.Sprintf("katana.Reader{%s}", r.mode)
 }
 
 // Write encrypts and writes data
-func (w *Writer) Write(p []byte) (n int, err error) {
-	if w.encWriter != nil {
-		return w.encWriter.Write(p)
+func (w *Writer) Write(p []byte) (int, error) {
+	if w.sioWriter != nil {
+		return w.sioWriter.Write(p)
 	}
 
-	key, salt, err := deriveKey(w.secret.pwd, nil)
+	var err error
+
+	w.sioWriter, err = w.secret.getEncryptWriter(w.rawWriter)
 
 	if err != nil {
-		return 0, fmt.Errorf("Error while key generation: %w", err)
+		return 0, fmt.Errorf("Can't create SIO writer: %w", err)
 	}
 
-	// write salt to the beginning of the file
-	_, err = w.rawWriter.Write(salt)
-
-	if err != nil {
-		return 0, fmt.Errorf("Error while writing salt: %w", err)
-	}
-
-	w.encWriter, err = sio.EncryptWriter(w.rawWriter, sio.Config{
-		Key:          key,
-		CipherSuites: []byte{sio.CHACHA20_POLY1305},
-	})
-
-	if err != nil {
-		return 0, fmt.Errorf("Can't create encrypt writer: %w", err)
-	}
-
-	return w.encWriter.Write(p)
+	return w.sioWriter.Write(p)
 }
 
 // Close closes writer
 func (w *Writer) Close() error {
-	return w.encWriter.Close()
+	return w.sioWriter.Close()
 }
 
 // String returns string representation of writer
 func (w *Writer) String() string {
-	if w == nil || w.encWriter == nil {
+	if w == nil || w.sioWriter == nil {
 		return "katana.Writer{nil}"
 	}
 
-	return "katana.Writer{}"
+	return fmt.Sprintf("katana.Writer{%s}", w.mode)
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -474,7 +535,7 @@ func (f *File) Read(b []byte) (int, error) {
 
 	var err error
 
-	f.r, err = f.secret.NewReader(f.fd)
+	f.r, err = f.secret.NewReader(f.fd, MODE_DECRYPT)
 
 	if err != nil {
 		return 0, err
@@ -559,15 +620,93 @@ func (s *Secret) addKeyData(data []byte) {
 	}
 }
 
+// getDecryptReader creates decrypt reader (encrypted → raw) instance
+func (s *Secret) getDecryptReader(r io.Reader) (io.Reader, error) {
+	salt := make([]byte, SALT_SIZE)
+	_, err := io.ReadFull(r, salt)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't read salt: %w", err)
+	}
+
+	cfg, _, err := getSIOConfig(s.pwd, salt)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+	}
+
+	rr, err := sio.DecryptReader(r, cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create decrypt reader: %w", err)
+	}
+
+	return rr, nil
+}
+
+// getEncryptReader creates encrypt reader (raw → encrypted) instance
+func (s *Secret) getEncryptReader(r io.Reader) (io.Reader, error) {
+	cfg, salt, err := getSIOConfig(s.pwd, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+	}
+
+	rr, err := sio.EncryptReader(r, cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create decrypt reader: %w", err)
+	}
+
+	return io.MultiReader(bytes.NewReader(salt), rr), nil
+}
+
+// getEncryptWriter creates encrypt writer (raw → ecnrypted) instance
+func (s *Secret) getEncryptWriter(w io.WriteCloser) (io.WriteCloser, error) {
+	cfg, salt, err := getSIOConfig(s.pwd, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+	}
+
+	_, err = w.Write(salt)
+
+	if err != nil {
+		return nil, fmt.Errorf("Error while writing salt: %w", err)
+	}
+
+	ww, err := sio.EncryptWriter(w, cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("Can't create encrypt writer: %w", err)
+	}
+
+	return ww, nil
+}
+
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-// deriveKey creates derived key from secret and salt
-func deriveKey(key, salt []byte) ([]byte, []byte, error) {
+// getSIOConfig returns configuration for SIO
+func getSIOConfig(secret, salt []byte) (sio.Config, []byte, error) {
 	if len(salt) == 0 {
 		salt = make([]byte, SALT_SIZE)
 		io.ReadFull(rand.Reader, salt)
 	}
 
+	key, salt, err := deriveKey(secret, salt)
+
+	if err != nil {
+		return sio.Config{}, nil, fmt.Errorf("Error while key generation: %w", err)
+	}
+
+	return sio.Config{
+		Key:          key,
+		CipherSuites: []byte{sio.CHACHA20_POLY1305},
+	}, salt, nil
+}
+
+// deriveKey creates derived key from secret and salt
+func deriveKey(key, salt []byte) ([]byte, []byte, error) {
 	keyData, err := scrypt.Key(key, salt, 32768, 16, 1, SALT_SIZE)
 
 	if err != nil {
