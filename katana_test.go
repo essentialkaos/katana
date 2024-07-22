@@ -8,6 +8,7 @@ package katana
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -85,6 +86,18 @@ func (s *KatanaSuite) TestSecretErrors(c *C) {
 	c.Assert(NewSecret("!").AddFile("test").Validate().Error(), Equals, "Can't open file \"test\": open test: no such file or directory")
 
 	c.Assert(skrt.Validate(), Equals, ErrNilSecret)
+
+	_, err := skrt.NewReader(nil, MODE_DECRYPT)
+	c.Assert(err, Equals, ErrNilSecret)
+
+	_, err = skrt.NewWriter(nil)
+	c.Assert(err, Equals, ErrNilSecret)
+
+	_, err = skrt.Encrypt(nil)
+	c.Assert(err, Equals, ErrNilSecret)
+
+	_, err = skrt.Decrypt(nil)
+	c.Assert(err, Equals, ErrNilSecret)
 
 	c.Assert(skrt.Checksum(), IsNil)
 	c.Assert(skrt.Checksum().String(), Equals, "")
@@ -193,6 +206,21 @@ func (s *KatanaSuite) TestFile(c *C) {
 	c.Assert(string(data), Equals, "TEST-DATA-1234-2")
 }
 
+func (s *KatanaSuite) TestEncryptDecrypt(c *C) {
+	skrt := NewSecret("TEST")
+
+	encData, err := skrt.Encrypt([]byte("TEST-DATA-1234"))
+	c.Assert(err, IsNil)
+	c.Assert(encData, Not(HasLen), 0)
+
+	decData, err := skrt.Decrypt(encData)
+	c.Assert(err, IsNil)
+	c.Assert(string(decData), Equals, "TEST-DATA-1234")
+
+	_, err = skrt.Decrypt([]byte("1234"))
+	c.Assert(err, NotNil)
+}
+
 func (s *KatanaSuite) TestReaderWriter(c *C) {
 	skrt := NewSecret("TEST")
 	tmpFile := c.MkDir() + "/file.txt"
@@ -211,7 +239,7 @@ func (s *KatanaSuite) TestReaderWriter(c *C) {
 	c.Assert(err, IsNil)
 	_, err = w.Write([]byte("Test1234"))
 	c.Assert(err, IsNil)
-	c.Assert(w.String(), Equals, "katana.Writer{}")
+	c.Assert(w.String(), Equals, "katana.Writer{ENCRYPT}")
 
 	err = w.Close()
 	c.Assert(err, IsNil)
@@ -222,7 +250,7 @@ func (s *KatanaSuite) TestReaderWriter(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(fd, NotNil)
 
-	r, err := skrt.NewReader(fd)
+	r, err := skrt.NewReader(fd, MODE_DECRYPT)
 	c.Assert(err, IsNil)
 	c.Assert(r.String(), Equals, "katana.Reader{nil}")
 
@@ -230,5 +258,17 @@ func (s *KatanaSuite) TestReaderWriter(c *C) {
 	c.Assert(err, IsNil)
 	_, err = r.Read(make([]byte, 8))
 	c.Assert(err, IsNil)
-	c.Assert(r.String(), Equals, "katana.Reader{}")
+	c.Assert(r.String(), Equals, "katana.Reader{DECRYPT}")
+
+	src := bytes.NewReader([]byte("Test1234"))
+	r, err = skrt.NewReader(src, MODE_ENCRYPT)
+	c.Assert(err, IsNil)
+	encData, err := io.ReadAll(r)
+	c.Assert(err, IsNil)
+	decData, err := skrt.Decrypt(encData)
+	c.Assert(err, IsNil)
+	c.Assert(string(decData), Equals, "Test1234")
+
+	_, err = skrt.getDecryptReader(bytes.NewReader([]byte("")))
+	c.Assert(err, NotNil)
 }
