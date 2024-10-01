@@ -1,6 +1,6 @@
 module github.com/essentialkaos/katana
 
-go 1.19
+go 1.22.7
 
 require (
 	github.com/essentialkaos/check v1.4.0
