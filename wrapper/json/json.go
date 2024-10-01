@@ -24,8 +24,10 @@ type JSONWrapper struct {
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 var (
-	ErrNilWrapper = fmt.Errorf("Wrapper is nil")
-	ErrNoSecret   = fmt.Errorf("No secret")
+	ErrNilWrapper  = fmt.Errorf("Wrapper is nil")
+	ErrNoSecret    = fmt.Errorf("Wrapper has no secret")
+	ErrEmptyData   = fmt.Errorf("Data is empty")
+	ErrEmptyObject = fmt.Errorf("Object is nil")
 )
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -43,15 +45,17 @@ func Wrap(skrt *katana.Secret) *JSONWrapper {
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Encrypt encodes given object and encrypts data
-func (w *JSONWrapper) Encrypt(data any) ([]byte, error) {
+func (w *JSONWrapper) Encrypt(v any) ([]byte, error) {
 	switch {
 	case w == nil:
 		return nil, ErrNilWrapper
 	case w.skrt == nil:
 		return nil, ErrNoSecret
+	case v == nil:
+		return nil, ErrEmptyObject
 	}
 
-	raw, err := json.Marshal(data)
+	raw, err := json.Marshal(v)
 
 	if err != nil {
 		return nil, err
@@ -67,6 +71,8 @@ func (w *JSONWrapper) Decrypt(data []byte, v any) error {
 		return ErrNilWrapper
 	case w.skrt == nil:
 		return ErrNoSecret
+	case len(data) == 0:
+		return ErrEmptyData
 	}
 
 	raw, err := w.skrt.Decrypt(data)

@@ -26,7 +26,8 @@ type GOBWrapper struct {
 
 var (
 	ErrNilWrapper = fmt.Errorf("Wrapper is nil")
-	ErrNoSecret   = fmt.Errorf("No secret")
+	ErrNoSecret   = fmt.Errorf("Wrapper has no secret")
+	ErrEmptyData  = fmt.Errorf("Data is empty")
 )
 
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -44,7 +45,7 @@ func Wrap(skrt *katana.Secret) *GOBWrapper {
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Encrypt encodes given object and encrypts data
-func (w *GOBWrapper) Encrypt(data any) ([]byte, error) {
+func (w *GOBWrapper) Encrypt(v any) ([]byte, error) {
 	switch {
 	case w == nil:
 		return nil, ErrNilWrapper
@@ -54,7 +55,7 @@ func (w *GOBWrapper) Encrypt(data any) ([]byte, error) {
 
 	var buf bytes.Buffer
 
-	err := gob.NewEncoder(&buf).Encode(data)
+	err := gob.NewEncoder(&buf).Encode(v)
 
 	if err != nil {
 		return nil, err
@@ -70,6 +71,8 @@ func (w *GOBWrapper) Decrypt(data []byte, v any) error {
 		return ErrNilWrapper
 	case w.skrt == nil:
 		return ErrNoSecret
+	case len(data) == 0:
+		return ErrEmptyData
 	}
 
 	raw, err := w.skrt.Decrypt(data)

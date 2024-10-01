@@ -42,9 +42,9 @@ vendor: mod-vendor ## Make vendored copy of dependencies
 test: ## Run tests
 	@echo "[36;1mStarting tests…[0m"
 ifdef COVERAGE_FILE ## Save coverage data into file (String)
-	@go test $(VERBOSE_FLAG) -covermode=count -coverprofile=$(COVERAGE_FILE) ./.
+	@go test $(VERBOSE_FLAG) -covermode=count -coverprofile=$(COVERAGE_FILE) ./. ./wrapper/gob ./wrapper/json
 else
-	@go test $(VERBOSE_FLAG) -covermode=count .
+	@go test $(VERBOSE_FLAG) -covermode=count ./. ./wrapper/gob ./wrapper/json
 endif
 
 mod-init:
