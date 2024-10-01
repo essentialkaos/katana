@@ -29,7 +29,7 @@ jobs:
 
     strategy:
       matrix:
-        go: [ '1.21.x', '1.22.x' ]
+        go: [ '1.22.x', '1.23.x' ]
 
     steps:
       - name: Checkout
@@ -67,6 +67,7 @@ jobs:
   SendCoverage:
     name: Send Coverage
     runs-on: ubuntu-latest
+    if: success() || failure()
 
     needs: Go
 
@@ -96,7 +97,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
+          go-version: '1.22.x'
 
       - name: Check Golang sources with Aligo
         uses: essentialkaos/aligo-action@v2
