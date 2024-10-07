@@ -49,7 +49,7 @@ func (s *JSONSuite) TestBasic(c *C) {
 }
 
 func (s *JSONSuite) TestErrors(c *C) {
-	var w *JSONWrapper
+	var w *Wrapper
 
 	dataIn := &Example{"Test", 1234, true}
 	dataOut := &Example{}
@@ -59,7 +59,7 @@ func (s *JSONSuite) TestErrors(c *C) {
 	err = w.Decrypt([]byte(`TEST`), dataOut)
 	c.Assert(err, Equals, ErrNilWrapper)
 
-	w = &JSONWrapper{}
+	w = &Wrapper{}
 
 	_, err = w.Encrypt("test")
 	c.Assert(err, Equals, ErrNoSecret)
