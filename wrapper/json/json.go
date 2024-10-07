@@ -17,7 +17,7 @@ import (
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
-type JSONWrapper struct {
+type Wrapper struct {
 	skrt *katana.Secret
 }
 
@@ -33,19 +33,19 @@ var (
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // validate wrapper interface
-var _ wrapper.Wrapper = (*JSONWrapper)(nil)
+var _ wrapper.Wrapper = (*Wrapper)(nil)
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Wrap creates JSON wrapper
-func Wrap(skrt *katana.Secret) *JSONWrapper {
-	return &JSONWrapper{skrt}
+func Wrap(skrt *katana.Secret) *Wrapper {
+	return &Wrapper{skrt}
 }
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 
 // Encrypt encodes given object and encrypts data
-func (w *JSONWrapper) Encrypt(v any) ([]byte, error) {
+func (w *Wrapper) Encrypt(v any) ([]byte, error) {
 	switch {
 	case w == nil:
 		return nil, ErrNilWrapper
@@ -65,7 +65,7 @@ func (w *JSONWrapper) Encrypt(v any) ([]byte, error) {
 }
 
 // Decrypt decrypts given data and decodes it
-func (w *JSONWrapper) Decrypt(data []byte, v any) error {
+func (w *Wrapper) Decrypt(data []byte, v any) error {
 	switch {
 	case w == nil:
 		return ErrNilWrapper

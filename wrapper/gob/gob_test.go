@@ -48,7 +48,7 @@ func (s *GOBSuite) TestBasic(c *C) {
 }
 
 func (s *GOBSuite) TestErrors(c *C) {
-	var w *GOBWrapper
+	var w *Wrapper
 
 	dataIn := &Example{"Test", 1234, true}
 	dataOut := &Example{}
@@ -58,7 +58,7 @@ func (s *GOBSuite) TestErrors(c *C) {
 	err = w.Decrypt([]byte(`TEST`), dataOut)
 	c.Assert(err, Equals, ErrNilWrapper)
 
-	w = &GOBWrapper{}
+	w = &Wrapper{}
 
 	_, err = w.Encrypt("test")
 	c.Assert(err, Equals, ErrNoSecret)
