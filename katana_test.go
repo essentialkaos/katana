@@ -221,6 +221,28 @@ func (s *KatanaSuite) TestEncryptDecrypt(c *C) {
 	c.Assert(err, NotNil)
 }
 
+func (s *KatanaSuite) TestEncryptDecryptBase64(c *C) {
+	skrt := NewSecret("TEST")
+
+	encData, err := skrt.EncryptToBase64([]byte("TEST-DATA-1234"))
+	c.Assert(err, IsNil)
+	c.Assert(encData, Not(HasLen), 0)
+
+	decData, err := skrt.DecryptFromBase64(encData)
+	c.Assert(err, IsNil)
+	c.Assert(string(decData), Equals, "TEST-DATA-1234")
+
+	_, err = skrt.DecryptFromBase64([]byte("ЫЫЫЫ"))
+	c.Assert(err, NotNil)
+	_, err = skrt.DecryptFromBase64([]byte("MTIzNFRlc1QxMjM0Cg=="))
+	c.Assert(err, NotNil)
+
+	skrt.pwd = nil
+
+	_, err = skrt.EncryptToBase64([]byte("TEST-DATA-1234"))
+	c.Assert(err, NotNil)
+}
+
 func (s *KatanaSuite) TestReaderWriter(c *C) {
 	skrt := NewSecret("TEST")
 	tmpFile := c.MkDir() + "/file.txt"
