@@ -334,6 +334,20 @@ func (s *Secret) Encrypt(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// EncryptToBase64 encrypts given data and encodes result to Base64
+func (s *Secret) EncryptToBase64(data []byte) ([]byte, error) {
+	encData, err := s.Encrypt(data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, base64.StdEncoding.EncodedLen(len(encData)))
+	base64.StdEncoding.Encode(buf, encData)
+
+	return buf, nil
+}
+
 // Decrypt decrypts given data
 func (s *Secret) Decrypt(data []byte) ([]byte, error) {
 	err := s.Validate()
@@ -363,6 +377,18 @@ func (s *Secret) Decrypt(data []byte) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// DecryptFromBase64 decrypts Base64-encoded data
+func (s *Secret) DecryptFromBase64(data []byte) ([]byte, error) {
+	buf := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
+	_, err := base64.StdEncoding.Decode(buf, data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return s.Decrypt(buf)
 }
 
 // Open opens the named file for reading. If successful, methods on the returned file
