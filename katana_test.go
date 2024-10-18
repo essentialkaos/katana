@@ -232,9 +232,14 @@ func (s *KatanaSuite) TestEncryptDecryptBase64(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(string(decData), Equals, "TEST-DATA-1234")
 
-	_, err = skrt.DecryptFromBase64([]byte("1234ABCD1234"))
+	_, err = skrt.DecryptFromBase64([]byte("ЫЫЫЫ"))
 	c.Assert(err, NotNil)
 	_, err = skrt.DecryptFromBase64([]byte("MTIzNFRlc1QxMjM0Cg=="))
+	c.Assert(err, NotNil)
+
+	skrt.pwd = nil
+
+	_, err = skrt.EncryptToBase64([]byte("TEST-DATA-1234"))
 	c.Assert(err, NotNil)
 }
 
