@@ -382,13 +382,13 @@ func (s *Secret) Decrypt(data []byte) ([]byte, error) {
 // DecryptFromBase64 decrypts Base64-encoded data
 func (s *Secret) DecryptFromBase64(data []byte) ([]byte, error) {
 	buf := make([]byte, base64.StdEncoding.DecodedLen(len(data)))
-	_, err := base64.StdEncoding.Decode(buf, data)
+	n, err := base64.StdEncoding.Decode(buf, data)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return s.Decrypt(buf)
+	return s.Decrypt(buf[:n])
 }
 
 // Open opens the named file for reading. If successful, methods on the returned file
