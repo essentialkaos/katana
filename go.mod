@@ -1,11 +1,10 @@
 module github.com/essentialkaos/katana
 
 go 1.22.7
-
 require (
 	github.com/essentialkaos/check v1.4.1
-	github.com/essentialkaos/sio v1.1.0
-	golang.org/x/crypto v0.33.0
+	github.com/essentialkaos/sio v1.2.0
+	golang.org/x/crypto v0.34.0
 )
 
 require (
