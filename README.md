@@ -2,9 +2,7 @@
 
 <p align="center">
   <a href="https://kaos.sh/g/katana"><img src=".github/images/godoc.svg"/></a>
-  <a href="https://kaos.sh/l/katana"><img src="https://kaos.sh/l/8b2508da1f5412ed6713.svg" alt="Code Climate Maintainability" /></a>
   <a href="https://kaos.sh/y/katana"><img src="https://kaos.sh/y/57d40bae43a24f8a866ed8178e4e2916.svg" alt="Codacy badge" /></a>
-  <br/>
   <a href="https://kaos.sh/c/katana"><img src="https://kaos.sh/c/katana.svg" alt="Coverage Status" /></a>
   <a href="https://kaos.sh/w/katana/ci"><img src="https://kaos.sh/w/katana/ci.svg" alt="GitHub Actions CI Status" /></a>
   <a href="https://kaos.sh/w/katana/codeql"><img src="https://kaos.sh/w/katana/codeql.svg" alt="GitHub Actions CodeQL Status" /></a>
