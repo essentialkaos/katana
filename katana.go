@@ -2,7 +2,7 @@ package katana
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 //                                                                                    //
-//                         Copyright (c) 2025 ESSENTIAL KAOS                          //
+//                         Copyright (c) 2026 ESSENTIAL KAOS                          //
 //      Apache License, Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>     //
 //                                                                                    //
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -185,7 +185,7 @@ func (s *Secret) AddEnv(name string) *Secret {
 	err := os.Setenv(name, "")
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't clean secret from environment variable: %w", err)
+		s.err = fmt.Errorf("can't clean secret from environment variable: %w", err)
 		return s
 	}
 
@@ -207,7 +207,7 @@ func (s *Secret) AddFile(file string) *Secret {
 	fd, err := os.OpenFile(file, os.O_RDONLY, 0)
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't open file %q: %w", file, err)
+		s.err = fmt.Errorf("can't open file %q: %w", file, err)
 		return s
 	}
 
@@ -215,7 +215,7 @@ func (s *Secret) AddFile(file string) *Secret {
 	_, err = io.Copy(hasher, fd)
 
 	if err != nil {
-		s.err = fmt.Errorf("Can't calculate file %q hash: %w", file, err)
+		s.err = fmt.Errorf("can't calculate file %q hash: %w", file, err)
 		return s
 	}
 
@@ -321,14 +321,14 @@ func (s *Secret) Encrypt(data []byte) ([]byte, error) {
 	cfg, salt, err := getSIOConfig(s.pwd, nil)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+		return nil, fmt.Errorf("can't create SIO config: %w", err)
 	}
 
 	buf := bytes.NewBuffer(salt)
 	_, err = sio.Encrypt(buf, bytes.NewReader(data), cfg)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't encrypt data: %w", err)
+		return nil, fmt.Errorf("can't encrypt data: %w", err)
 	}
 
 	return buf.Bytes(), nil
@@ -357,7 +357,7 @@ func (s *Secret) Decrypt(data []byte) ([]byte, error) {
 	}
 
 	if len(data) < SALT_SIZE {
-		return nil, fmt.Errorf("Invalid data size to decrypt")
+		return nil, fmt.Errorf("invalid data size to decrypt")
 	}
 
 	salt := data[:SALT_SIZE]
@@ -366,14 +366,14 @@ func (s *Secret) Decrypt(data []byte) ([]byte, error) {
 	cfg, _, err := getSIOConfig(s.pwd, salt)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+		return nil, fmt.Errorf("can't create SIO config: %w", err)
 	}
 
 	buf := bytes.NewBufferString("")
 	_, err = sio.Decrypt(buf, bytes.NewReader(data), cfg)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't decrypt data: %w", err)
+		return nil, fmt.Errorf("can't decrypt data: %w", err)
 	}
 
 	return buf.Bytes(), nil
@@ -403,7 +403,7 @@ func (s *Secret) Open(name string) (*File, error) {
 	fd, err := os.Open(name)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't open file: %w", err)
+		return nil, fmt.Errorf("can't open file: %w", err)
 	}
 
 	return &File{secret: s, fd: fd}, nil
@@ -421,15 +421,15 @@ func (s *Secret) OpenFile(name string, flag int, perm os.FileMode) (*File, error
 
 	switch {
 	case flag&os.O_APPEND != 0:
-		return nil, fmt.Errorf("Can't open file %q: Unsupported flag O_APPEND", name)
+		return nil, fmt.Errorf("can't open file %q: Unsupported flag O_APPEND", name)
 	case flag&os.O_RDWR != 0:
-		return nil, fmt.Errorf("Can't open file %q: Unsupported flag O_RDWR", name)
+		return nil, fmt.Errorf("can't open file %q: Unsupported flag O_RDWR", name)
 	}
 
 	fd, err := os.OpenFile(name, flag, perm)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't open file: %w", err)
+		return nil, fmt.Errorf("can't open file: %w", err)
 	}
 
 	return &File{secret: s, fd: fd}, nil
@@ -480,7 +480,7 @@ func (r *Reader) Read(p []byte) (int, error) {
 	}
 
 	if err != nil {
-		return 0, fmt.Errorf("Can't create SIO reader: %w", err)
+		return 0, fmt.Errorf("can't create SIO reader: %w", err)
 	}
 
 	return r.sioReader.Read(p)
@@ -506,7 +506,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	w.sioWriter, err = w.secret.getEncryptWriter(w.rawWriter)
 
 	if err != nil {
-		return 0, fmt.Errorf("Can't create SIO writer: %w", err)
+		return 0, fmt.Errorf("can't create SIO writer: %w", err)
 	}
 
 	return w.sioWriter.Write(p)
@@ -652,19 +652,19 @@ func (s *Secret) getDecryptReader(r io.Reader) (io.Reader, error) {
 	_, err := io.ReadFull(r, salt)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't read salt: %w", err)
+		return nil, fmt.Errorf("can't read salt: %w", err)
 	}
 
 	cfg, _, err := getSIOConfig(s.pwd, salt)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+		return nil, fmt.Errorf("can't create SIO config: %w", err)
 	}
 
 	rr, err := sio.DecryptReader(r, cfg)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create decrypt reader: %w", err)
+		return nil, fmt.Errorf("can't create decrypt reader: %w", err)
 	}
 
 	return rr, nil
@@ -675,30 +675,30 @@ func (s *Secret) getEncryptReader(r io.Reader) (io.Reader, error) {
 	cfg, salt, err := getSIOConfig(s.pwd, nil)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+		return nil, fmt.Errorf("can't create SIO config: %w", err)
 	}
 
 	rr, err := sio.EncryptReader(r, cfg)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create decrypt reader: %w", err)
+		return nil, fmt.Errorf("can't create decrypt reader: %w", err)
 	}
 
 	return io.MultiReader(bytes.NewReader(salt), rr), nil
 }
 
-// getEncryptWriter creates encrypt writer (raw → ecnrypted) instance
+// getEncryptWriter creates encrypt writer (raw → encrypted) instance
 func (s *Secret) getEncryptWriter(w io.WriteCloser) (io.WriteCloser, error) {
 	cfg, salt, err := getSIOConfig(s.pwd, nil)
 
 	if err != nil {
-		return nil, fmt.Errorf("Can't create SIO config: %w", err)
+		return nil, fmt.Errorf("can't create SIO config: %w", err)
 	}
 
 	_, err = w.Write(salt)
 
 	if err != nil {
-		return nil, fmt.Errorf("Error while writing salt: %w", err)
+		return nil, fmt.Errorf("error while writing salt: %w", err)
 	}
 
 	ww, err := sio.EncryptWriter(w, cfg)
@@ -722,7 +722,7 @@ func getSIOConfig(secret, salt []byte) (sio.Config, []byte, error) {
 	key, salt, err := deriveKey(secret, salt)
 
 	if err != nil {
-		return sio.Config{}, nil, fmt.Errorf("Error while key generation: %w", err)
+		return sio.Config{}, nil, fmt.Errorf("error while key generation: %w", err)
 	}
 
 	return sio.Config{

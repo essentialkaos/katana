@@ -2,7 +2,7 @@ package katana
 
 // ////////////////////////////////////////////////////////////////////////////////// //
 //                                                                                    //
-//                         Copyright (c) 2025 ESSENTIAL KAOS                          //
+//                         Copyright (c) 2026 ESSENTIAL KAOS                          //
 //      Apache License, Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>     //
 //                                                                                    //
 // ////////////////////////////////////////////////////////////////////////////////// //
@@ -83,7 +83,7 @@ func (s *KatanaSuite) TestSecretErrors(c *C) {
 	c.Assert(NewSecret("!").AddFile("").Validate(), Equals, ErrEmptySecretPath)
 	c.Assert(skrt.AddFile("test").Validate(), Equals, ErrNilSecret)
 	c.Assert(skrt2.AddFile("test").Validate().Error(), Equals, "TEST-ERROR")
-	c.Assert(NewSecret("!").AddFile("test").Validate().Error(), Equals, "Can't open file \"test\": open test: no such file or directory")
+	c.Assert(NewSecret("!").AddFile("test").Validate().Error(), Equals, "can't open file \"test\": open test: no such file or directory")
 
 	c.Assert(skrt.Validate(), Equals, ErrNilSecret)
 
@@ -148,9 +148,9 @@ func (s *KatanaSuite) TestFile(c *C) {
 	c.Assert(skrt.Validate(), IsNil)
 
 	_, err = skrt.OpenFile("/test", os.O_CREATE|os.O_APPEND, 0644)
-	c.Assert(err.Error(), Equals, `Can't open file "/test": Unsupported flag O_APPEND`)
+	c.Assert(err.Error(), Equals, `can't open file "/test": Unsupported flag O_APPEND`)
 	_, err = skrt.OpenFile("/test", os.O_CREATE|os.O_RDWR, 0644)
-	c.Assert(err.Error(), Equals, `Can't open file "/test": Unsupported flag O_RDWR`)
+	c.Assert(err.Error(), Equals, `can't open file "/test": Unsupported flag O_RDWR`)
 
 	_, err = skrt.Open("/test")
 	c.Assert(err, NotNil)
