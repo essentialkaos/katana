@@ -687,7 +687,7 @@ func (s *Secret) getEncryptReader(r io.Reader) (io.Reader, error) {
 	return io.MultiReader(bytes.NewReader(salt), rr), nil
 }
 
-// getEncryptWriter creates encrypt writer (raw → ecnrypted) instance
+// getEncryptWriter creates encrypt writer (raw → encrypted) instance
 func (s *Secret) getEncryptWriter(w io.WriteCloser) (io.WriteCloser, error) {
 	cfg, salt, err := getSIOConfig(s.pwd, nil)
 
